@@ -1,5 +1,4 @@
 <div align="center">
-
 # autodori (GUI Version)
 
 邦多利小助手
@@ -7,6 +6,23 @@
 ![Pipeline](https://img.shields.io/badge/Pipeline-%23454545?logo=paddypower&logoColor=%23FFFFFF)  ![python](https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=white)
 
 </div>
+
+### 碎碎念
+- 本仓库仅用于打歌做任务，老年人只想拿个装饰养老平时看看剧情，打打hard差不多了，40首26难度真没这个心力练了（年轻真好啊），不包含自动化清体力相关
+### 与前版区别改动
+- 补充缺失的文件：原仓库Releases包正常运行后复制了除exe外所有文件到项目源码覆盖，不知道什么原理总之能正常运行了
+- 精简项目：删除build相关，删除自动模式相关，只保留打歌核心功能，直接用python运行
+- 加入歌名模式：直接搜索歌名，开始打歌
+- 加入文件模式：直接加载谱面，开始打歌
+- api获取方式更改：使用@WindowsSov8forUs/bestdori-api
+### 使用方式
+- pip install -r requirements.txt
+- pip install bestdori-api
+- python src/gui.py (一定要在项目根目录运行！否则报错)
+- 游戏设置见程序启动画面说明
+---
+以下为原版readme
+---
 
 **致谢:** 本项目是基于 [EvATive7/autodori](https://github.com/EvATive7/autodori) 的命令行版本进行的二次开发，旨在改进稳定性并提供一个更易于使用的图形用户界面。所有核心功能和设计均归功于原作者。
 
