@@ -24,12 +24,6 @@ class QueueHandler(logging.Handler):
             return
         self.log_queue.put(self.format(record))
 
-class FilteringFileHandler(logging.FileHandler):
-    def emit(self, record):
-        msg = record.getMessage()
-        if msg.startswith("send operation:"):
-            return
-        super().emit(record)
 
 class AutodoriGUI:
     def __init__(self, master):
@@ -42,39 +36,25 @@ class AutodoriGUI:
         self.mode_var = tk.StringVar(value='single')
         self.difficulty_var = tk.StringVar(value=autodori_ui.DIFFICULTY)
         self.human_var = tk.BooleanVar(value=autodori_ui.HUMAN_DELAY_ENABLED)
-        
         self.input_mode_var = tk.StringVar(value='ocr')
 
         self.log_queue = queue.Queue()
         queue_handler = QueueHandler(self.log_queue)
 
-        debug_folder = "debug"
-        os.makedirs(debug_folder, exist_ok=True)
-
-        log_filename = f"autodori_{time.strftime('%Y%m%d-%H%M%S')}.log"
-        log_filepath = os.path.join(debug_folder, log_filename)
-
-        file_handler = FilteringFileHandler(log_filepath, encoding='utf-8')
-
         root_logger = logging.getLogger()
         root_logger.setLevel(logging.INFO)
 
         formatter = logging.Formatter('%(asctime)s - [%(levelname)s] - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
-
         queue_handler.setFormatter(formatter)
-        file_handler.setFormatter(formatter)
 
         root_logger.addHandler(queue_handler)
-        root_logger.addHandler(file_handler)
 
         self.master.after(100, self._process_log_queue)
 
         self._create_disclaimer_view()
-
         self.global_vars_entries = {}
 
     def _create_disclaimer_view(self):
-        """创建并显示欢迎/风险提示界面。"""
         self.master.minsize(700, 550)
 
         self.disclaimer_frame = ttk.Frame(self.master, padding="15")
@@ -83,9 +63,7 @@ class AutodoriGUI:
         title_label = ttk.Label(self.disclaimer_frame, text="使用须知", font=("", 16, "bold"))
         title_label.pack(pady=(10, 20))
 
-        info_text = (
-            "在开始前，请仔细阅读以下使用说明与风险提示："
-        )
+        info_text = "在开始前，请仔细阅读以下使用说明与风险提示："
         self.info_label = ttk.Label(self.disclaimer_frame, text=info_text, justify=tk.LEFT, font=("", 11))
         self.info_label.pack(fill=tk.X, pady=5)
 
@@ -125,11 +103,8 @@ class AutodoriGUI:
         self.disclaimer_frame.bind("<Configure>", self._on_disclaimer_resize)
 
     def _on_disclaimer_resize(self, event):
-
         new_wraplength = event.width - 40
-
         self.info_label.config(wraplength=new_wraplength)
-
         self.usage_label.config(wraplength=new_wraplength - 20)
         self.warning_label.config(wraplength=new_wraplength - 20)
 
@@ -144,7 +119,6 @@ class AutodoriGUI:
         self._create_main_widgets()
 
     def _create_main_widgets(self):
-        """创建主控制面板的所有控件。"""
         self.notebook = ttk.Notebook(self.master)
         self.notebook.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
@@ -157,7 +131,6 @@ class AutodoriGUI:
         self._create_globals_tab(globals_frame)
 
     def _create_control_panel_tab(self, parent_frame):
-        """填充"控制面板"选项卡的内容"""
         self.paned_window = ttk.PanedWindow(parent_frame, orient=tk.VERTICAL)
         self.paned_window.pack(fill=tk.BOTH, expand=True)
 
@@ -174,7 +147,6 @@ class AutodoriGUI:
         mode_frame.pack(fill=tk.X, padx=2, pady=2)
         
         ttk.Label(mode_frame, text="模式:").pack(side=tk.LEFT)
-
         ttk.Radiobutton(mode_frame, text="OCR识别", variable=self.input_mode_var, value='ocr').pack(side=tk.LEFT, padx=5)
         ttk.Radiobutton(mode_frame, text="指定歌名", variable=self.input_mode_var, value='song_name').pack(side=tk.LEFT, padx=5)
         ttk.Radiobutton(mode_frame, text="本地文件", variable=self.input_mode_var, value='file').pack(side=tk.LEFT, padx=5)
@@ -220,8 +192,8 @@ class AutodoriGUI:
 
         self.paned_window.bind("<ButtonPress-1>", self._prevent_resize)
         self.paned_window.bind("<B1-Motion>", self._prevent_resize)
+
     def _select_chart_file(self):
-        """选择谱面JSON文件"""
         filename = filedialog.askopenfilename(
             title="选择谱面文件",
             filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
@@ -230,9 +202,7 @@ class AutodoriGUI:
             self.file_path_var.set(filename)
 
     def _on_input_mode_change(self, *args):
-        """输入模式切换时禁用/启用对应的输入框"""
         mode = self.input_mode_var.get()
-        
         if mode == 'ocr':
             self.song_name_entry.config(state='disabled')
             self.file_entry.config(state='disabled')
@@ -247,13 +217,10 @@ class AutodoriGUI:
             self.file_entry.config(state='normal')
 
     def _create_globals_tab(self, parent_frame):
-        """填充“全局变量调试”选项卡的内容"""
         self.editable_globals = {
             'PHOTOGATE_LATENCY': int,
-            'MIN_LIVEBOOST': int,
             'DEFAULT_MOVE_SLICE_SIZE': int,
             'CMD_SLICE_SIZE': int,
-            'MAX_CONTINUOUS_FAILED_TIMES': int,
             'STABLE_THRESHOLD': int,
             'CONSECUTIVE_FRAMES_NEEDED': int,
             'FREEZE_SLEEP_TIME': float,
@@ -265,10 +232,8 @@ class AutodoriGUI:
 
         localization_map = {
             'PHOTOGATE_LATENCY': "光电门延迟 (ms)",
-            'MIN_LIVEBOOST': "最小 LiveBoost 值",
             'DEFAULT_MOVE_SLICE_SIZE': "滑动音符切片大小",
             'CMD_SLICE_SIZE': "指令分片大小",
-            'MAX_CONTINUOUS_FAILED_TIMES': "最大连续失败次数",
             'STABLE_THRESHOLD': "画面静止判定阈值",
             'CONSECUTIVE_FRAMES_NEEDED': "画面静止所需帧数",
             'FREEZE_SLEEP_TIME': "画面静止检测间隔时间 (s)",
@@ -282,10 +247,8 @@ class AutodoriGUI:
 
         current_row = 0
         for var_name, var_type in self.editable_globals.items():
-
             display_name = localization_map.get(var_name, var_name)
-            ttk.Label(parent_frame, text=f"{display_name}:", font=("", 10)).grid(row=current_row, column=0, sticky='w',
-                                                                                 padx=5, pady=5)
+            ttk.Label(parent_frame, text=f"{display_name}:", font=("", 10)).grid(row=current_row, column=0, sticky='w', padx=5, pady=5)
 
             if var_type == dict:
                 dict_frame = ttk.Frame(parent_frame)
@@ -300,7 +263,6 @@ class AutodoriGUI:
                     entry_var = tk.StringVar(value=str(value))
                     entry = ttk.Entry(dict_frame, textvariable=entry_var, width=8)
                     entry.grid(row=0, column=col_count + 1, padx=(0, 10))
-
                     self.global_vars_entries[var_name][key] = entry_var
                     col_count += 2
 
@@ -318,18 +280,15 @@ class AutodoriGUI:
 
             current_row += 1
 
-        ttk.Separator(parent_frame, orient='horizontal').grid(row=current_row, column=0, columnspan=2, sticky='ew',
-                                                              pady=15)
+        ttk.Separator(parent_frame, orient='horizontal').grid(row=current_row, column=0, columnspan=2, sticky='ew', pady=15)
         current_row += 1
 
         button_frame = ttk.Frame(parent_frame)
         button_frame.grid(row=current_row, column=0, columnspan=2, sticky='e')
-
         apply_button = ttk.Button(button_frame, text="应用修改", command=self._apply_global_settings)
         apply_button.pack(side=tk.RIGHT, padx=5)
 
     def _apply_global_settings(self):
-        """将UI中的值应用到后端的全局变量"""
         try:
             for var_name, controls in self.global_vars_entries.items():
                 var_type = self.editable_globals[var_name]
@@ -342,7 +301,7 @@ class AutodoriGUI:
                             current_dict[key] = float(new_val_str)
                         except ValueError:
                             current_dict[key] = int(new_val_str)
-                else:  # int or float
+                else:
                     new_val_str = controls.get()
                     if var_type == int:
                         setattr(autodori_ui, var_name, int(new_val_str))
@@ -352,7 +311,6 @@ class AutodoriGUI:
                         setattr(autodori_ui, var_name, new_val_str)
 
             messagebox.showinfo("成功", "全局变量已成功更新！")
-
         except ValueError as e:
             messagebox.showerror("输入错误", f"修改失败，请输入有效的数值。\n错误: {e}")
         except Exception as e:
@@ -367,7 +325,6 @@ class AutodoriGUI:
                     self.log_display.insert(tk.END, record + '\n')
                     self.log_display.see(tk.END)
                     self.log_display.configure(state='disabled')
-
         except queue.Empty:
             pass
         self.master.after(100, self._process_log_queue)
@@ -411,8 +368,6 @@ class AutodoriGUI:
         if hasattr(autodori_ui, 'maatasker') and autodori_ui.maatasker and autodori_ui.maatasker.running:
             logging.info("Attempting to stop maatasker.")
             autodori_ui.maatasker.post_stop()
-        else:
-            pass
 
     def _run_bot_task(self, config_data):
         try:

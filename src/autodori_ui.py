@@ -10,7 +10,6 @@ from typing import Optional
 
 import cv2
 import numpy as np
-import yaml
 from fuzzywuzzy import process as fzwzprocess
 from maa.context import Context
 from maa.controller import AdbController
@@ -29,7 +28,7 @@ from minitouchpy import (
 
 import player
 from api import BestdoriAPI
-from chart import Chart, PlayRecord
+from chart import Chart
 from util import get_color_eval_in_range, get_runtime_info
 
 
@@ -51,10 +50,8 @@ def resource_path(relative_path):
 
 # --- Global Variables & Constants ---
 PHOTOGATE_LATENCY = 30
-MIN_LIVEBOOST = 1
 DEFAULT_MOVE_SLICE_SIZE = 10
 CMD_SLICE_SIZE = 100
-MAX_CONTINUOUS_FAILED_TIMES = 10
 STABLE_THRESHOLD = 3
 CONSECUTIVE_FRAMES_NEEDED = 120
 FREEZE_SLEEP_TIME = 0.005
@@ -64,7 +61,6 @@ DIFFICULTY = "hard"
 HUMAN_DELAY_ENABLED = False
 IS_FULL_SONG = False
 IS_HIGH_DIFFICULTY = False
-SUPPORTED_DIFFICULTIES = ['easy', 'normal', 'hard', 'expert', 'special']
 OFFSET = {"up": 0, "down": 0, "move": 0, "wait": 0.0, "interval": 0.0}
 IS_INITIALISED = False  # <-- 新增：全局初始化状态标志
 MANUAL_SONG_NAME: Optional[str] = None  # 手动指定的歌曲名
@@ -75,13 +71,7 @@ stop_event = threading.Event()
 playback_started_event = threading.Event()
 
 # --- MAA & System Components ---
-config_path = resource_path("data/config.yml")
-if not config_path.exists():
-    config_path.parent.mkdir(exist_ok=True)
-    config_path.touch()
-    config_path.write_text("{}", encoding="utf-8")
 
-config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
 maaresource = Resource()
 maatasker = Tasker()
 maacontroller: Optional[AdbController] = None
@@ -90,10 +80,9 @@ current_player: Optional[player.Player] = None
 mnt: Optional[MNT] = None
 
 # --- Song & Chart Data ---
-all_songs: dict = BestdoriAPI.get_song_list()
 all_song_name_indexes: dict[str, str] = {
     list(filter(lambda title: title is not None, sinfo["musicTitle"]))[0]: sid
-    for sid, sinfo in all_songs.items()
+    for sid, sinfo in BestdoriAPI.get_song_list().items()
 }
 current_song_name: Optional[str] = None
 current_song_id: Optional[str] = None
@@ -103,15 +92,6 @@ current_orientation: int = 0
 # --- Latency Compensation & Real-time Data ---
 callback_data: dict = {}
 callback_data_lock = threading.Lock()
-cmd_log_list: list = []
-cmd_log_list_lock = threading.Lock()
-"""
-# --- Real-time Streaming Components ---
-streaming_thread: Optional[threading.Thread] = None
-streaming_active = threading.Event()
-STREAM_SETTINGS = {"fps": 1, "resolution": 480}
-stream_settings_lock = threading.Lock()
-"""
 
 def load_song_by_name(song_name: str):
     """直接通过歌名加载歌曲，跳过OCR识别"""
@@ -319,7 +299,6 @@ def play_song(stop_event, playback_started_event):
     """
     Core playback function with performance optimisations.
     """
-    cmd_log_list.clear()
     reset_callback_data()
 
     def check_exit_status():
@@ -444,8 +423,6 @@ def mnt_callback(event: MNTEvent, data: MNTEventData):
     if event == MNTEvent.EVATIVE7_LOG:
         data: MNTEvATive7LogEventData = data
         cmd, cost = data.cmd, data.cost
-        with cmd_log_list_lock:
-            cmd_log_list.append(data)
         cmd_type = cmd.split(" ")[0]
         with callback_data_lock:
             if (last_cmd_endtime := callback_data.get("last_cmd_endtime")) != -1:
@@ -573,100 +550,6 @@ class UIPlay(CustomAction):
             return self.RunResult(False)
         finally:
             monitor.join(timeout=5)
-
-
-@maaresource.custom_recognition("UIPlayResult")
-class UIPlayResult(CustomRecognition):
-    def analyze(self, context, argv):
-        types = {
-            "score": {"roi": [1028, 192, 144, 35]}, "maxcombo": {"roi": [1009, 391, 91, 28]},
-            "perfect": {"roi": [829, 282, 90, 28]}, "great": {"roi": [828, 322, 91, 27]},
-            "good": {"roi": [829, 363, 91, 27]}, "bad": {"roi": [829, 401, 90, 27]},
-            "miss": {"roi": [830, 438, 91, 28]}, "fast": {"roi": [1088, 283, 90, 27]},
-            "slow": {"roi": [1088, 323, 91, 28]},
-        }
-        result, pipeline = {}, {f"_ocr_{t}": {"recognition": "OCR", "only_rec": True, "roi": v["roi"]} for t, v in
-                                types.items()}
-        for type_ in types:
-            try:
-                ocr_recognition_result = context.run_recognition(f"_ocr_{type_}", argv.image, pipeline)
-                if ocr_recognition_result and ocr_recognition_result.best_result:
-                    result[type_] = int(ocr_recognition_result.best_result.text)
-                else:
-                    result[type_] = -1
-            except (ValueError, TypeError):
-                result[type_] = -1
-        logging.info(f"Play result: {result}")
-        return self.AnalyzeResult([0, 0, 0, 0], json.dumps(result))
-
-@maaresource.custom_recognition("UIRecognizeLevelUp")
-class UIRecognizeLevelUp(CustomRecognition):
-    def analyze(self, context: Context, argv: CustomRecognition.AnalyzeArg):
-        """Recognizes the 'LevelUP!' text in a specific ROI with high confidence."""
-        roi = [590, 640, 100, 30]
-        target_text = "LevelUP!"
-        confidence_threshold = 85  # 设置置信度阈值
-
-        try:
-            pipeline = {"_ocr_levelup": {"recognition": "OCR", "roi": roi, "only_rec": True}}
-            ocr_text = context.run_recognition("_ocr_levelup", argv.image, pipeline).best_result.text
-
-            # 使用模糊匹配来检查置信度
-            match = fzwzprocess.extractOne(ocr_text, [target_text])
-
-            if match and match[1] >= confidence_threshold:
-                # match 是一个元组，例如 ('LevelUP!', 95)
-                return self.AnalyzeResult(roi, target_text)  # 返回成功
-            else:
-                score = match[1] if match else 0
-                return self.AnalyzeResult(None, "")  # 返回失败
-
-        except Exception as e:
-            return self.AnalyzeResult(None, "")
-
-
-"""
-# --- Screen Streaming ---
-def _stream_loop(socketio):
-    while streaming_active.is_set():
-        try:
-            if not current_player: time.sleep(1); continue
-            with stream_settings_lock:
-                fps, res_width = STREAM_SETTINGS["fps"], STREAM_SETTINGS["resolution"]
-            img_bgr = current_player.ipc_capture_display()
-            if img_bgr is None: time.sleep(1); continue
-            img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
-            h, w = img_rgb.shape[:2]
-            thumb = cv2.resize(img_rgb, (res_width, int(res_width * (h / w))))
-            _, buffer = cv2.imencode(".jpg", thumb, [cv2.IMWRITE_JPEG_QUALITY, 80])
-            socketio.emit("update_frame", {"image": base64.b64encode(buffer).decode("utf-8")})
-            time.sleep(1 / fps)
-        except Exception as e:
-            logging.error(f"Screen streaming thread error: {e}")
-            time.sleep(1)
-
-
-def update_stream_settings(settings):
-    with stream_settings_lock:
-        STREAM_SETTINGS["fps"] = int(settings.get("fps", 1))
-        STREAM_SETTINGS["resolution"] = int(settings.get("resolution", 480))
-
-
-def start_streaming(socketio):
-    global streaming_thread
-    if not streaming_thread or not streaming_thread.is_alive():
-        streaming_active.set()
-        streaming_thread = threading.Thread(target=_stream_loop, args=(socketio,))
-        streaming_thread.daemon = True
-        streaming_thread.start()
-
-
-def stop_streaming():
-    global streaming_thread
-    streaming_active.clear()
-    if streaming_thread and streaming_thread.is_alive(): streaming_thread.join(timeout=1)
-    streaming_thread = None
-"""
 
 
 # --- Task Entrypoints ---

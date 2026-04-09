@@ -6,7 +6,6 @@ from io import StringIO
 from pathlib import Path
 
 import numpy as np
-import yaml
 from minitouchpy import CommandBuilder
 from PIL import Image
 
